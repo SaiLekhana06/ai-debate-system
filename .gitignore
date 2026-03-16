@@ -1,0 +1,7 @@
+venv/
+.env.txt
+__pycache__/
+*.pyc
+history.json
+test_setup.py
+*.json
