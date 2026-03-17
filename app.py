@@ -37,47 +37,39 @@ def parse_judge_output(judge_text):
 st.set_page_config(
     page_title='AI Debate System',
     page_icon='⚖️',
-    layout='centered'
+    layout='wide'   # changed to wide so sidebar fits nicely
 )
 
 # ── STYLES ────────────────────────────────────────────────────
 st.markdown('''
 <style>
-/* ── FORCE LIGHT THEME EVERYWHERE ── */
-.stApp, .stApp > * {
-    background-color: #ffffff !important;
+.stApp {
+    background-color: #ffffff;
 }
+* { color: #1a1a1a !important; }
 
-/* Fix ALL text to be dark and readable */
-p, span, div, label, h1, h2, h3, h4 {
-    color: #1a1a1a !important;
-}
-
-/* ── TEXT INPUT BOX — white background, dark text ── */
 .stTextArea textarea {
     background-color: #ffffff !important;
     color: #1a1a1a !important;
     border: 2px solid #cccccc !important;
     font-size: 15px !important;
+    caret-color: #1a1a1a !important;
+    cursor: text !important;
 }
 .stTextArea textarea::placeholder {
     color: #999999 !important;
 }
-
-/* ── ALL BUTTONS — force readable text ── */
 .stButton > button {
     background-color: #f0f0f0 !important;
     color: #1a1a1a !important;
     border: 1px solid #cccccc !important;
     font-weight: 600 !important;
     font-size: 15px !important;
+    cursor: pointer !important;
 }
 .stButton > button:hover {
     background-color: #e0e0e0 !important;
-    color: #1a1a1a !important;
 }
-
-/* Primary button (Give Verdict) — keep red but white text */
 [data-testid="baseButton-primary"] {
     background-color: #c62828 !important;
     color: #ffffff !important;
@@ -87,26 +79,12 @@ p, span, div, label, h1, h2, h3, h4 {
     background-color: #b71c1c !important;
     color: #ffffff !important;
 }
-
-/* ── METRIC BOX (Confidence, Truth %) ── */
-[data-testid="stMetric"] {
-    background-color: #f8f8f8 !important;
-    border: 1px solid #dddddd !important;
-    border-radius: 8px !important;
-    padding: 12px !important;
-}
-[data-testid="stMetricLabel"] {
-    color: #555555 !important;
-    font-size: 13px !important;
-}
 [data-testid="stMetricValue"] {
     color: #1a1a1a !important;
-    font-size: 18px !important;   /* smaller so text doesnt get cut off */
+    font-size: 18px !important;
     white-space: normal !important;
     overflow: visible !important;
 }
-
-/* ── PROPONENT BUBBLE — LEFT ── */
 .pro-bubble {
     background-color: #f0faf0 !important;
     border: 2px solid #2e7d32 !important;
@@ -117,8 +95,6 @@ p, span, div, label, h1, h2, h3, h4 {
     line-height: 1.6 !important;
     color: #1a1a1a !important;
 }
-
-/* ── OPPONENT BUBBLE — RIGHT ── */
 .opp-bubble {
     background-color: #fff5f5 !important;
     border: 2px solid #c62828 !important;
@@ -129,7 +105,6 @@ p, span, div, label, h1, h2, h3, h4 {
     line-height: 1.6 !important;
     color: #1a1a1a !important;
 }
-
 .pro-label {
     color: #2e7d32 !important;
     font-weight: bold !important;
@@ -137,7 +112,6 @@ p, span, div, label, h1, h2, h3, h4 {
     margin-bottom: 4px !important;
     margin-left: 4px !important;
 }
-
 .opp-label {
     color: #c62828 !important;
     font-weight: bold !important;
@@ -146,7 +120,6 @@ p, span, div, label, h1, h2, h3, h4 {
     margin-right: 4px !important;
     text-align: right !important;
 }
-
 .round-badge {
     text-align: center !important;
     color: #888888 !important;
@@ -154,21 +127,20 @@ p, span, div, label, h1, h2, h3, h4 {
     margin: 16px 0 !important;
     letter-spacing: 1px !important;
 }
-/* Fix 1 - show blinking cursor while typing */
-.stTextArea textarea {
-    caret-color: #1a1a1a !important;
-    cursor: text !important;
-}
-/* Fix 2 - show hand cursor on buttons */
-.stButton > button {
+.history-item {
+    padding: 10px 12px !important;
+    margin: 4px 0 !important;
+    border-radius: 8px !important;
+    background-color: #f5f5f5 !important;
+    border-left: 3px solid #2E75B6 !important;
     cursor: pointer !important;
+    font-size: 13px !important;
+}
+.history-item:hover {
+    background-color: #e8e8e8 !important;
 }
 </style>
 ''', unsafe_allow_html=True)
-# ── HEADER ────────────────────────────────────────────────────
-st.title('⚖️ AI Debate System')
-st.caption('Two AI agents debate your claim. You control when to stop.')
-st.divider()
 
 # ── SESSION STATE ─────────────────────────────────────────────
 defaults = {
@@ -176,13 +148,61 @@ defaults = {
     'verdict':         None,
     'started':         False,
     'claim':           '',
-    'waiting':         False,  # ← KEY FIX: True = waiting for user input
-    'pro_done':        False,  # ← tracks if proponent ran this round
-    'opp_done':        False,  # ← tracks if opponent ran this round
+    'waiting':         False,
+    # past_debates stores all completed debates for sidebar
+    'past_debates':    [],
 }
 for key, val in defaults.items():
     if key not in st.session_state:
         st.session_state[key] = val
+
+# ── SIDEBAR — DEBATE HISTORY ──────────────────────────────────
+with st.sidebar:
+    st.markdown("## 🕘 Past Debates")
+    st.divider()
+
+    if not st.session_state.past_debates:
+        st.caption("Your past debates will appear here after you get a verdict.")
+    else:
+        # Show each past debate as a clickable button
+        for i, past in enumerate(reversed(st.session_state.past_debates)):
+            # Truncate claim to 30 characters for sidebar display
+            short_claim = past['claim'][:35] + '...' \
+                if len(past['claim']) > 35 else past['claim']
+
+            # Verdict color indicator
+            verdict_emoji = {
+                'True':       '✅',
+                'False':      '❌',
+                'Misleading': '⚠️',
+                'Unverified': '❓'
+            }.get(past['verdict']['verdict'], '❓')
+
+            if st.button(
+                f"{verdict_emoji} {short_claim}",
+                key=f"history_{i}",
+                use_container_width=True
+            ):
+                # Load this past debate into view
+                st.session_state.debate_history = past['debate_history']
+                st.session_state.verdict        = past['verdict']
+                st.session_state.claim          = past['claim']
+                st.session_state.started        = True
+                st.session_state.waiting        = False
+                st.rerun()
+
+    st.divider()
+    # New debate button in sidebar
+    if st.button('➕ New Debate', use_container_width=True):
+        for key, val in defaults.items():
+            if key != 'past_debates':  # keep history!
+                st.session_state[key] = val
+        st.rerun()
+
+# ── HEADER ────────────────────────────────────────────────────
+st.title('⚖️ AI Debate System')
+st.caption('Two AI agents debate your claim. You control when to stop.')
+st.divider()
 
 # ── CLAIM INPUT ───────────────────────────────────────────────
 if not st.session_state.started:
@@ -193,9 +213,11 @@ if not st.session_state.started:
     )
     if st.button('🚀 Start Debate', type='primary',
                  use_container_width=True, disabled=not claim):
-        st.session_state.claim   = claim
-        st.session_state.started = True
-        st.session_state.waiting = False
+        st.session_state.claim          = claim
+        st.session_state.started        = True
+        st.session_state.debate_history = []
+        st.session_state.verdict        = None
+        st.session_state.waiting        = False
         st.rerun()
 
 # ── SHOW CLAIM ────────────────────────────────────────────────
@@ -203,38 +225,41 @@ if st.session_state.started:
     st.markdown(f"**Claim:** {st.session_state.claim}")
     st.divider()
 
-# ── DISPLAY ALL PREVIOUS MESSAGES ────────────────────────────
+# ── DISPLAY ALL MESSAGES ──────────────────────────────────────
 for entry in st.session_state.debate_history:
     label   = entry['label']
     content = entry['content']
-
     if 'PROPONENT' in label:
-        st.markdown(f'<div class="pro-label">🟢 {label}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="pro-bubble">{content}</div>', unsafe_allow_html=True)
-        st.markdown('<div style="margin-bottom:12px"></div>', unsafe_allow_html=True)
-
+        st.markdown(f'<div class="pro-label">🟢 {label}</div>',
+                    unsafe_allow_html=True)
+        st.markdown(f'<div class="pro-bubble">{content}</div>',
+                    unsafe_allow_html=True)
+        st.markdown('<div style="margin-bottom:12px"></div>',
+                    unsafe_allow_html=True)
     elif 'OPPONENT' in label:
-        st.markdown(f'<div class="opp-label">{label} 🔴</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="opp-bubble">{content}</div>', unsafe_allow_html=True)
-        st.markdown('<div style="margin-bottom:12px"></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="opp-label">{label} 🔴</div>',
+                    unsafe_allow_html=True)
+        st.markdown(f'<div class="opp-bubble">{content}</div>',
+                    unsafe_allow_html=True)
+        st.markdown('<div style="margin-bottom:12px"></div>',
+                    unsafe_allow_html=True)
 
-# ── MAIN DEBATE LOGIC ─────────────────────────────────────────
+# ── DEBATE LOGIC ──────────────────────────────────────────────
 if st.session_state.started and not st.session_state.verdict:
 
     history   = st.session_state.debate_history
     pro_count = sum(1 for e in history if 'PROPONENT' in e['label'])
     opp_count = sum(1 for e in history if 'OPPONENT'  in e['label'])
 
-    # ── WAITING FOR USER CHOICE — show buttons, do nothing else
+    # ── WAITING — show choice buttons only ───────────────────
     if st.session_state.waiting:
         st.divider()
         st.markdown('### What would you like to do?')
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button('▶️ Continue — Next Round',
+            if st.button('▶️ Continue - Next Round',
                          use_container_width=True):
-                # Reset for next round and let debate run
                 st.session_state.waiting = False
                 st.rerun()
 
@@ -242,21 +267,28 @@ if st.session_state.started and not st.session_state.verdict:
             if st.button('⚖️ Give Verdict',
                          type='primary',
                          use_container_width=True):
-                with st.spinner('⚖️ Judge is reviewing the full debate...'):
+                with st.spinner('Judge is reviewing the full debate...'):
                     judge_raw = agent_judge(
                         st.session_state.claim,
                         st.session_state.debate_history
                     )
                     st.session_state.verdict = parse_judge_output(judge_raw)
+
+                # ── SAVE TO HISTORY when verdict is given ────
+                st.session_state.past_debates.append({
+                    'claim':         st.session_state.claim,
+                    'debate_history': st.session_state.debate_history,
+                    'verdict':       st.session_state.verdict
+                })
                 st.rerun()
 
-    # ── NOT WAITING — run the next agent
+    # ── NOT WAITING — run next agent ─────────────────────────
     else:
         # PROPONENT'S TURN
         if pro_count == opp_count:
             round_num = pro_count + 1
             st.markdown(
-                f'<div class="round-badge">── Round {round_num} ──</div>',
+                f'<div class="round-badge">-- Round {round_num} --</div>',
                 unsafe_allow_html=True
             )
             with st.spinner('🟢 Proponent is thinking...'):
@@ -269,7 +301,7 @@ if st.session_state.started and not st.session_state.verdict:
                 'label':   f'PROPONENT (Round {round_num})',
                 'content': pro
             })
-            st.rerun()  # show proponent message, then opponent runs next
+            st.rerun()
 
         # OPPONENT'S TURN
         elif opp_count < pro_count:
@@ -283,11 +315,10 @@ if st.session_state.started and not st.session_state.verdict:
                 'label':   f'OPPONENT (Round {pro_count})',
                 'content': opp
             })
-            # ── STOP HERE and wait for user ──────────────────
             st.session_state.waiting = True
-            st.rerun()  # show opponent message + choice buttons
+            st.rerun()
 
-# ── VERDICT DISPLAY ───────────────────────────────────────────
+# ── VERDICT ───────────────────────────────────────────────────
 if st.session_state.verdict:
     v = st.session_state.verdict
     st.divider()
@@ -306,19 +337,13 @@ if st.session_state.verdict:
     with col1:
         st.metric('Confidence', v['confidence'])
     with col2:
-        st.metric('Truth %', v['truth_percentage'])
+        st.markdown(f"**Truth Percentage:** {v['truth_percentage']}")
 
-    st.markdown('**Strongest Point — Proponent**')
+    st.markdown('**Strongest Point - Proponent**')
     st.write(v['strongest_proponent'])
-    st.markdown('**Strongest Point — Opponent**')
+    st.markdown('**Strongest Point - Opponent**')
     st.write(v['strongest_opponent'])
     st.markdown('**Reasoning**')
     st.write(v['reasoning'])
     st.markdown('**Percentage Reasoning**')
     st.write(v['percentage_reasoning'])
-
-    st.divider()
-    if st.button('🔄 New Debate', use_container_width=True):
-        for key, val in defaults.items():
-            st.session_state[key] = val
-        st.rerun()
